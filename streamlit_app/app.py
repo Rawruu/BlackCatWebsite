@@ -58,37 +58,75 @@ def fetch_black_cats():
     """Fetch posts from r/blackcats subreddit"""
     try:
         url = 'https://www.reddit.com/r/blackcats/.json'
-        response = requests.get(url, headers={'User-Agent': 'BlackCatStreamlitApp/1.0'}, timeout=10)
         
-        if response.status_code != 200:
-            st.error(f"Reddit API Error: {response.status_code}")
-            return None
+        # Use a realistic browser User-Agent to avoid being blocked
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
         
-        data = response.json()
-        posts = data['data']['children']
+        # Try with retries in case of temporary failures
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, headers=headers, timeout=15)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    posts = data['data']['children']
+                    
+                    # Filter for image posts
+                    image_posts = []
+                    for post in posts:
+                        post_data = post['data']
+                        post_url = post_data.get('url', '')
+                        
+                        if post_url and (
+                            'i.redd.it' in post_url or 
+                            'imgur.com' in post_url or
+                            post_url.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))
+                        ):
+                            image_posts.append(post_data)
+                    
+                    if not image_posts:
+                        st.warning("No image posts found in r/blackcats right now. Try again in a moment!")
+                        return None
+                    
+                    return image_posts
+                
+                elif response.status_code == 429:
+                    # Rate limited - wait and retry
+                    if attempt < max_retries - 1:
+                        st.warning(f"Rate limited. Retrying... (attempt {attempt + 1}/{max_retries})")
+                        continue
+                    else:
+                        st.error("Reddit is rate limiting us. Please try again in a few minutes.")
+                        return None
+                
+                elif response.status_code == 403:
+                    st.error("🚫 Access denied by Reddit. This might be a temporary issue. Please try again.")
+                    return None
+                
+                else:
+                    st.error(f"Reddit API Error: {response.status_code}")
+                    return None
+                    
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    st.warning(f"Request timed out. Retrying... (attempt {attempt + 1}/{max_retries})")
+                    continue
+                else:
+                    st.error("Request timed out. Please check your connection and try again.")
+                    return None
+            except requests.exceptions.ConnectionError:
+                if attempt < max_retries - 1:
+                    st.warning(f"Connection error. Retrying... (attempt {attempt + 1}/{max_retries})")
+                    continue
+                else:
+                    st.error("Connection error. Please check your internet connection.")
+                    return None
         
-        # Filter for image posts
-        image_posts = []
-        for post in posts:
-            post_data = post['data']
-            url = post_data.get('url', '')
-            
-            if url and (
-                'i.redd.it' in url or 
-                'imgur.com' in url or
-                url.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))
-            ):
-                image_posts.append(post_data)
-        
-        if not image_posts:
-            st.error("No image posts found in r/blackcats")
-            return None
-        
-        return image_posts
-    
-    except requests.exceptions.Timeout:
-        st.error("Request timed out. Please try again.")
         return None
+        
     except Exception as e:
         st.error(f"Error fetching cats: {str(e)}")
         return None
