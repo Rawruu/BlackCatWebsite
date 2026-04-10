@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import random
+import time
 from PIL import Image
 from io import BytesIO
 from urllib.parse import urlparse
@@ -54,21 +55,29 @@ if 'current_title' not in st.session_state:
 if 'current_author' not in st.session_state:
     st.session_state.current_author = ''
 
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def fetch_black_cats():
-    """Fetch posts from r/blackcats subreddit"""
+    """Fetch posts from r/blackcats subreddit with caching"""
+    """Fetch posts from r/blackcats subreddit with caching"""
     try:
         url = 'https://www.reddit.com/r/blackcats/.json'
         
         # Use a realistic browser User-Agent to avoid being blocked
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Cache-Control': 'no-cache'
         }
         
+        # Add small delay to be respectful
+        time.sleep(1)
+        
         # Try with retries in case of temporary failures
-        max_retries = 3
+        max_retries = 2
         for attempt in range(max_retries):
             try:
-                response = requests.get(url, headers=headers, timeout=15)
+                response = requests.get(url, headers=headers, timeout=20)
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -80,55 +89,48 @@ def fetch_black_cats():
                         post_data = post['data']
                         post_url = post_data.get('url', '')
                         
-                        if post_url and (
+                        # Skip stickied posts and ads
+                        if post_data.get('stickied') or post_data.get('is_self'):
+                            continue
+                        
+                        if post_url and not post_url.startswith('https://www.reddit.com') and (
                             'i.redd.it' in post_url or 
                             'imgur.com' in post_url or
-                            post_url.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))
+                            'gfycat' in post_url or
+                            'redgifs' in post_url or
+                            post_url.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp'))
                         ):
                             image_posts.append(post_data)
                     
                     if not image_posts:
-                        st.warning("No image posts found in r/blackcats right now. Try again in a moment!")
                         return None
                     
                     return image_posts
                 
                 elif response.status_code == 429:
-                    # Rate limited - wait and retry
+                    # Rate limited
                     if attempt < max_retries - 1:
-                        st.warning(f"Rate limited. Retrying... (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(5)
                         continue
                     else:
-                        st.error("Reddit is rate limiting us. Please try again in a few minutes.")
                         return None
                 
                 elif response.status_code == 403:
-                    st.error("🚫 Access denied by Reddit. This might be a temporary issue. Please try again.")
                     return None
                 
                 else:
-                    st.error(f"Reddit API Error: {response.status_code}")
                     return None
                     
-            except requests.exceptions.Timeout:
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 if attempt < max_retries - 1:
-                    st.warning(f"Request timed out. Retrying... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(3)
                     continue
                 else:
-                    st.error("Request timed out. Please check your connection and try again.")
-                    return None
-            except requests.exceptions.ConnectionError:
-                if attempt < max_retries - 1:
-                    st.warning(f"Connection error. Retrying... (attempt {attempt + 1}/{max_retries})")
-                    continue
-                else:
-                    st.error("Connection error. Please check your internet connection.")
                     return None
         
         return None
         
-    except Exception as e:
-        st.error(f"Error fetching cats: {str(e)}")
+    except Exception:
         return None
 
 def display_cat(post_data):
@@ -147,6 +149,9 @@ with col2:
             if image_posts:
                 random_post = random.choice(image_posts)
                 display_cat(random_post)
+                st.success("✅ Got your black cat!")
+            else:
+                st.error("😿 I'm having trouble connecting to r/blackcats. Reddit might be temporarily unavailable or blocking us. Please try again in a moment!")
 
 # Display current cat
 if st.session_state.current_cat:
