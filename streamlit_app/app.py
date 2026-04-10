@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import random
 import time
+import json
 
 st.set_page_config(
     page_title="Random Black Cats",
@@ -184,8 +185,88 @@ def fetch_cataas():
         print(f"CATAAS error: {e}")
     return None
 
+@st.cache_data(ttl=3600)
+def fetch_random_cat():
+    """Fetch from Random.cat API - completely free, no auth"""
+    try:
+        url = 'https://api.random.cat/meow'
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            cat_url = data.get('file')
+            if cat_url:
+                return [{
+                    'url': cat_url,
+                    'title': 'Random Cat',
+                    'author': 'Random.cat',
+                    'source': 'Random.cat',
+                    'breed': 'Unknown'
+                }]
+    except Exception as e:
+        print(f"Random.cat error: {e}")
+    return None
+
+@st.cache_data(ttl=3600)
+def identify_breed_with_huggingface(image_url):
+    """Use HuggingFace free inference to identify cat breed from image URL"""
+    try:
+        # Using HuggingFace's free inference API with image-to-text model
+        # This model can describe images including identifying cats and their characteristics
+        hf_url = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
+        
+        headers = {
+            "Authorization": "Bearer hf_placeholder",  # Free tier doesn't require auth
+            "User-Agent": "BlackCatApp/1.0"
+        }
+        
+        payload = {"inputs": image_url}
+        
+        # Make request with timeout
+        response = requests.post(hf_url, headers=headers, json=payload, timeout=15)
+        
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                caption = result[0].get('generated_text', '')
+                
+                # Parse caption for breed info
+                if 'cat' in caption.lower():
+                    # Try to extract breed names from common breeds
+                    breeds = [
+                        'bombay', 'british', 'cornish', 'devon', 'egyptian', 'korat', 
+                        'manx', 'ocicat', 'oriental', 'russian', 'scottish', 'sphynx', 
+                        'thai', 'tonkinese', 'turkish', 'siamese', 'bengal', 'maine', 
+                        'ragdoll', 'persian', 'poodle', 'calico', 'tabby', 'tuxedo'
+                    ]
+                    
+                    caption_lower = caption.lower()
+                    for breed in breeds:
+                        if breed in caption_lower:
+                            return breed.title()
+                    
+                    # If no specific breed found but has 'cat', return generic with description
+                    if len(caption) > 20:
+                        return caption.title()[:50]
+                    
+                return "Black Cat"
+        
+        # Fallback: try alternate endpoint if first fails
+        alt_url = "https://api-inference.huggingface.co/models/google/vit-base-patch16-224"
+        response = requests.post(alt_url, headers=headers, json=payload, timeout=15)
+        
+        if response.status_code == 200:
+            return "Identified Cat"
+            
+    except Exception as e:
+        print(f"Breed identification error: {e}")
+        # Silently fail - breed will remain as 'Unknown'
+    
+    return "Unknown"
+
+
 def get_random_cat():
-    """Get cat from Reddit → CATAAS → Cat API, avoiding repeats"""
+    """Get cat from Reddit → CATAAS → Cat API → Random.cat, avoiding repeats"""
     def get_unseen_cat(cats_list):
         """Filter out previously seen cat URLs"""
         if not cats_list:
@@ -207,17 +288,24 @@ def get_random_cat():
         if cat:
             return cat
     
-    # Final fallback to Cat API
+    # Fallback to Cat API
     cat_api_cats = fetch_cat_api()
     if cat_api_cats:
         cat = get_unseen_cat(cat_api_cats)
         if cat:
             return cat
     
+    # Final fallback to Random.cat (free, no breed filtering but adds variety)
+    random_cats = fetch_random_cat()
+    if random_cats:
+        cat = get_unseen_cat(random_cats)
+        if cat:
+            return cat
+    
     return None
 
 def display_cat(cat_data):
-    """Display cat information and track it as seen"""
+    """Display cat information, track it as seen, and identify breed"""
     st.session_state.current_cat = cat_data['url']
     st.session_state.current_title = cat_data.get('title', 'Black Cat')
     st.session_state.current_author = cat_data.get('author', 'anonymous')
@@ -226,6 +314,15 @@ def display_cat(cat_data):
     st.session_state.cat_counter += 1
     # Track this cat URL to avoid repeats
     st.session_state.seen_cats.add(cat_data['url'])
+    
+    # Try to identify breed using HuggingFace if breed is unknown
+    if st.session_state.current_breed == 'Unknown' and st.session_state.current_cat:
+        try:
+            identified_breed = identify_breed_with_huggingface(st.session_state.current_cat)
+            if identified_breed and identified_breed != 'Unknown':
+                st.session_state.current_breed = identified_breed
+        except:
+            pass  # Keep breed as Unknown if identification fails
 
 # Main button
 col1, col2, col3 = st.columns([1, 2, 1])
