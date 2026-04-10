@@ -476,19 +476,13 @@ def display_cat(cat_data):
         except:
             pass  # Continue with breed identification failure
 
-# Main button
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    if st.button("🐱 Get New Cat", use_container_width=True):
-        with st.spinner('Loading...'):
-            cat_data = get_random_cat()
-            if cat_data:
-                display_cat(cat_data)
-                st.success("✅ Got a cat!")
-            else:
-                st.error("😿 Could not load any cats. Please try again.")
+# Load initial cat on first visit
+if st.session_state.history_index == -1:
+    cat_data = get_random_cat()
+    if cat_data:
+        display_cat(cat_data)
 
-# Display cat
+# Display cat with navigation
 if st.session_state.current_cat:
     st.divider()
     
@@ -553,13 +547,18 @@ if st.session_state.current_cat:
         except:
             st.warning("Could not download image")
 else:
-    st.info("👋 Click the button above to see a cat!")
+    st.divider()
+    st.info("👋 Click the Forward button ▶️ to load a cat!")
 
 # Stats
 st.divider()
 col1, col2, col3 = st.columns(3)
 with col2:
-    st.metric("Cats Viewed", st.session_state.cat_counter)
+    st.metric("✅ Accepted", st.session_state.accepted_cats)
+with col1:
+    st.metric("❌ Rejected", st.session_state.rejected_cats)
+with col3:
+    st.metric("📈 Total", st.session_state.total_fetched)
 
 # Footer
 st.markdown("""
