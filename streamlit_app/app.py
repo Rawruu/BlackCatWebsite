@@ -305,15 +305,18 @@ def is_black_cat_with_huggingface(image_url):
                 if has_non_black:
                     return False
                 
-                # Default: accept if we found a cat description without clear color info
-                if 'cat' in caption:
-                    return True
+                # Reject if no color info found (just says "cat" with no details)
+                if 'cat' in caption and not has_black and not has_non_black:
+                    return False
+                
+                # Default reject for safety
+                return False
         
     except Exception as e:
         print(f"Color verification error: {e}")
     
-    # If API fails, accept the cat (less filtering is better than rejecting everything)
-    return True
+    # If API fails, reject the cat (safer to filter too much than too little)
+    return False
 
 @st.cache_data(ttl=3600)
 def identify_breed_with_huggingface(image_url):
