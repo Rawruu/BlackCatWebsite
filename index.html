@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Black Cats</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🐱 Random Black Cats 🐱</h1>
+            <p class="subtitle">Purr-fectly Charming Felines</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <div class="image-container">
+                    <img id="catImage" src="https://via.placeholder.com/600x400?text=Loading..." alt="Random black cat" loading="lazy">
+                    <div id="loadingSpinner" class="spinner hidden"></div>
+                </div>
+                
+                <div class="button-group">
+                    <button id="newCatBtn" class="btn btn-primary">Get New Cat</button>
+                    <button id="downloadBtn" class="btn btn-secondary">Download</button>
+                </div>
+
+                <div class="info">
+                    <p id="catInfo">Click the button to see a random black cat!</p>
+                </div>
+            </div>
+
+            <div class="stats">
+                <p>Cats viewed: <span id="catCount">0</span></p>
+            </div>
+        </main>
+
+        <footer>
+            <p>Made with ❤️ for cat lovers | Images via The Cat API</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
