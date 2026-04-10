@@ -24,6 +24,8 @@ if 'current_source' not in st.session_state:
     st.session_state.current_source = ''
 if 'current_breed' not in st.session_state:
     st.session_state.current_breed = ''
+if 'current_description' not in st.session_state:
+    st.session_state.current_description = ''
 if 'seen_cats' not in st.session_state:
     st.session_state.seen_cats = set()
 if 'cat_history' not in st.session_state:
@@ -333,10 +335,9 @@ def is_black_cat_with_huggingface(image_url):
 
 @st.cache_data(ttl=3600)
 def identify_breed_with_huggingface(image_url):
-    """Use HuggingFace free inference to identify cat breed from image URL"""
+    """Use HuggingFace free inference to identify cat breed and get description"""
     try:
         # Using HuggingFace's free inference API with image-to-text model
-        # This model can describe images including identifying cats and their characteristics
         hf_url = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
         
         headers = {
@@ -364,28 +365,41 @@ def identify_breed_with_huggingface(image_url):
                     ]
                     
                     caption_lower = caption.lower()
-                    for breed in breeds:
-                        if breed in caption_lower:
-                            return breed.title()
+                    breed = "Black Cat"
+                    for b in breeds:
+                        if b in caption_lower:
+                            breed = b.title()
+                            break
                     
-                    # If no specific breed found but has 'cat', return generic with description
-                    if len(caption) > 20:
-                        return caption.title()[:50]
-                    
-                return "Black Cat"
+                    # Return both breed and full description
+                    return {
+                        'breed': breed,
+                        'description': caption.title()
+                    }
+                
+                return {
+                    'breed': 'Black Cat',
+                    'description': caption.title()
+                }
         
         # Fallback: try alternate endpoint if first fails
         alt_url = "https://api-inference.huggingface.co/models/google/vit-base-patch16-224"
         response = requests.post(alt_url, headers=headers, json=payload, timeout=15)
         
         if response.status_code == 200:
-            return "Identified Cat"
+            return {
+                'breed': 'Identified Cat',
+                'description': 'A cat image'
+            }
             
     except Exception as e:
         print(f"Breed identification error: {e}")
         # Silently fail - breed will remain as 'Unknown'
     
-    return "Unknown"
+    return {
+        'breed': 'Unknown',
+        'description': ''
+    }
 
 
 def get_random_cat():
@@ -447,6 +461,7 @@ def display_cat(cat_data):
     st.session_state.current_author = cat_data.get('author', 'anonymous')
     st.session_state.current_source = cat_data.get('source', 'Unknown')
     st.session_state.current_breed = cat_data.get('breed', 'Unknown')
+    st.session_state.current_description = ''
     st.session_state.cat_counter += 1
     st.session_state.accepted_cats += 1  # Track accepted cats
     st.session_state.total_fetched += 1  # Track total
@@ -463,11 +478,14 @@ def display_cat(cat_data):
             # First verify it's black
             is_black = is_black_cat_with_huggingface(st.session_state.current_cat)
             
-            # Then identify breed
-            identified_breed = identify_breed_with_huggingface(st.session_state.current_cat)
+            # Then identify breed and get description
+            result = identify_breed_with_huggingface(st.session_state.current_cat)
             
-            if identified_breed and identified_breed != 'Unknown':
-                st.session_state.current_breed = identified_breed
+            if result and result.get('breed') and result['breed'] != 'Unknown':
+                st.session_state.current_breed = result['breed']
+            
+            if result and result.get('description'):
+                st.session_state.current_description = result['description']
             
             # If we detected it's not black, we can mark it for later retry logic
             if not is_black:
@@ -506,6 +524,14 @@ if st.session_state.current_cat:
             st.image(st.session_state.current_cat, width=760)
         except:
             st.error("Could not load image")
+        
+        # Display HuggingFace description under the image
+        if st.session_state.current_description:
+            st.markdown(f"""
+            <div style='text-align: center; color: #b0b0b0; font-size: 0.9rem; margin-top: 10px; font-style: italic;'>
+            ✨ {st.session_state.current_description}
+            </div>
+            """, unsafe_allow_html=True)
     
     with col3:
         if st.button("Forward ▶️", use_container_width=True):
