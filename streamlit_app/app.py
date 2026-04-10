@@ -53,6 +53,8 @@ if 'current_author' not in st.session_state:
     st.session_state.current_author = ''
 if 'current_source' not in st.session_state:
     st.session_state.current_source = ''
+if 'current_breed' not in st.session_state:
+    st.session_state.current_breed = ''
 
 @st.cache_data(ttl=3600)
 def fetch_reddit_cats():
@@ -87,8 +89,50 @@ def fetch_reddit_cats():
 
 @st.cache_data(ttl=3600)
 def fetch_cat_api():
-    """Fallback to Cat API"""
+    """Fallback to Cat API with black cat breeds"""
     try:
+        # Black cat breeds from The Cat API
+        black_breeds = [
+            'bom',   # Bombay - solid black
+            'bsh',   # British Shorthair - can be black
+            'crx',   # Cornish Rex - can be black
+            'drx',   # Devon Rex - can be black
+            'egy',   # Egyptian Mau - spotted, can be black
+            'kor',   # Korat - blue/gray, sometimes black
+            'man',   # Manx - can be black
+            'oak',   # Ocicat - can be black
+            'ori',   # Oriental - can be black
+            'rux',   # Russian Blue - some are very dark
+            'sfx',   # Scottish Fold - can be black
+            'sph',   # Sphynx - can be black
+            'tha',   # Thai - can be black
+            'ton',   # Tonkinese - can be black
+            'van',   # Turkish Van - can be black
+        ]
+        
+        # Try to get images with breed filtering
+        for breed in black_breeds:
+            try:
+                url = f'https://api.thecatapi.com/v1/images/search?limit=10&breed_ids={breed}'
+                response = requests.get(url, timeout=10)
+                
+                if response.status_code == 200:
+                    cats = response.json()
+                    if cats:
+                        return [
+                            {
+                                'url': cat['url'],
+                                'title': f'{cat.get("breeds", [{}])[0].get("name", "Black Cat")}' if cat.get('breeds') else 'Black Cat',
+                                'author': 'The Cat API',
+                                'source': 'Cat API',
+                                'breed': cat.get('breeds', [{}])[0].get('name', 'Unknown')
+                            }
+                            for cat in cats
+                        ]
+            except:
+                continue
+        
+        # If specific breeds fail, get any random cats
         url = 'https://api.thecatapi.com/v1/images/search?limit=20'
         response = requests.get(url, timeout=10)
         
@@ -99,7 +143,8 @@ def fetch_cat_api():
                     'url': cat['url'],
                     'title': 'Random Cat',
                     'author': 'The Cat API',
-                    'source': 'The Cat API'
+                    'source': 'Cat API',
+                    'breed': cat.get('breeds', [{}])[0].get('name', 'Unknown') if cat.get('breeds') else 'Unknown'
                 }
                 for cat in cats
             ]
@@ -127,6 +172,7 @@ def display_cat(cat_data):
     st.session_state.current_title = cat_data.get('title', 'Black Cat')
     st.session_state.current_author = cat_data.get('author', 'anonymous')
     st.session_state.current_source = cat_data.get('source', 'Unknown')
+    st.session_state.current_breed = cat_data.get('breed', 'Unknown')
     st.session_state.cat_counter += 1
 
 # Main button
@@ -153,7 +199,7 @@ if st.session_state.current_cat:
     st.markdown(f"""
     <div class='info-box'>
     <strong>🐱 {st.session_state.current_title}</strong><br>
-    Posted by {st.session_state.current_author} • {st.session_state.current_source}
+    Breed: {st.session_state.current_breed} • {st.session_state.current_source}
     </div>
     """, unsafe_allow_html=True)
     
