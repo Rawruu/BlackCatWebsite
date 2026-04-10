@@ -65,29 +65,55 @@ if 'history_index' not in st.session_state:
 
 @st.cache_data(ttl=3600)
 def fetch_reddit_cats():
-    """Fetch from r/blackcats with proper headers"""
+    """Fetch from r/blackcats with proper headers - multiple pages for more cats"""
     try:
-        url = 'https://www.reddit.com/r/blackcats/.json'
+        all_posts = []
+        url = 'https://www.reddit.com/r/blackcats/.json?limit=100'  # Increased from default 25 to 100
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
+        
+        # Fetch first page
         response = requests.get(url, headers=headers, timeout=15)
         
         if response.status_code == 200:
-            posts = response.json()['data']['children']
-            image_posts = []
+            data = response.json()['data']
+            posts = data['children']
             
+            image_posts = []
             for post in posts:
-                data = post['data']
-                if not data.get('stickied') and not data.get('is_self'):
-                    post_url = data.get('url', '')
+                post_data = post['data']
+                if not post_data.get('stickied') and not post_data.get('is_self'):
+                    post_url = post_data.get('url', '')
                     if post_url and ('i.redd.it' in post_url or 'imgur.com' in post_url):
                         image_posts.append({
                             'url': post_url,
-                            'title': data.get('title', 'Black Cat'),
-                            'author': data.get('author', 'anonymous'),
+                            'title': post_data.get('title', 'Black Cat'),
+                            'author': post_data.get('author', 'anonymous'),
                             'source': 'r/blackcats'
                         })
+            
+            # Try to fetch next page for even more images
+            after = data.get('after')
+            if after and len(image_posts) < 150:
+                url_page2 = f'https://www.reddit.com/r/blackcats/.json?limit=100&after={after}'
+                try:
+                    response2 = requests.get(url_page2, headers=headers, timeout=15)
+                    if response2.status_code == 200:
+                        data2 = response2.json()['data']['children']
+                        for post in data2:
+                            post_data = post['data']
+                            if not post_data.get('stickied') and not post_data.get('is_self'):
+                                post_url = post_data.get('url', '')
+                                if post_url and ('i.redd.it' in post_url or 'imgur.com' in post_url):
+                                    image_posts.append({
+                                        'url': post_url,
+                                        'title': post_data.get('title', 'Black Cat'),
+                                        'author': post_data.get('author', 'anonymous'),
+                                        'source': 'r/blackcats'
+                                    })
+                except:
+                    pass  # If second page fails, just use first page
             
             return image_posts if image_posts else None
     except:
@@ -96,7 +122,7 @@ def fetch_reddit_cats():
 
 @st.cache_data(ttl=3600)
 def fetch_cat_api():
-    """Fallback to Cat API with black cat breeds"""
+    """Fetch from Cat API with black cat breeds - get from ALL breeds"""
     try:
         # Black cat breeds from The Cat API
         black_breeds = [
@@ -117,30 +143,32 @@ def fetch_cat_api():
             'van',   # Turkish Van - can be black
         ]
         
-        # Try to get images with breed filtering
+        all_cats = []
+        
+        # Fetch from ALL breeds and accumulate (increased from 10 to 50 per breed)
         for breed in black_breeds:
             try:
-                url = f'https://api.thecatapi.com/v1/images/search?limit=10&breed_ids={breed}'
+                url = f'https://api.thecatapi.com/v1/images/search?limit=50&breed_ids={breed}'
                 response = requests.get(url, timeout=10)
                 
                 if response.status_code == 200:
                     cats = response.json()
-                    if cats:
-                        return [
-                            {
-                                'url': cat['url'],
-                                'title': f'{cat.get("breeds", [{}])[0].get("name", "Black Cat")}' if cat.get('breeds') else 'Black Cat',
-                                'author': 'The Cat API',
-                                'source': 'Cat API',
-                                'breed': cat.get('breeds', [{}])[0].get('name', 'Unknown')
-                            }
-                            for cat in cats
-                        ]
+                    for cat in cats:
+                        all_cats.append({
+                            'url': cat['url'],
+                            'title': f'{cat.get("breeds", [{}])[0].get("name", "Black Cat")}' if cat.get('breeds') else 'Black Cat',
+                            'author': 'The Cat API',
+                            'source': 'Cat API',
+                            'breed': cat.get('breeds', [{}])[0].get('name', 'Unknown') if cat.get('breeds') else 'Unknown'
+                        })
             except:
-                continue
+                continue  # Continue to next breed if one fails
         
-        # If specific breeds fail, get any random cats
-        url = 'https://api.thecatapi.com/v1/images/search?limit=20'
+        if all_cats:
+            return all_cats
+        
+        # If specific breeds fail, get any random cats as fallback
+        url = 'https://api.thecatapi.com/v1/images/search?limit=50'
         response = requests.get(url, timeout=10)
         
         if response.status_code == 200:
@@ -161,10 +189,10 @@ def fetch_cat_api():
 
 @st.cache_data(ttl=3600)
 def fetch_cataas():
-    """Fallback to CATAAS (Cat As A Service) - no auth required"""
+    """Fallback to CATAAS (Cat As A Service) - no auth required, fetch in bulk"""
     try:
-        # CATAAS API returns cat list
-        url = 'https://cataas.com/api/cats?limit=20'
+        # CATAAS API returns cat list - fetch larger batch (increased from 20 to 100)
+        url = 'https://cataas.com/api/cats?limit=100&skip=0'
         response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
         
         if response.status_code == 200:
@@ -184,31 +212,63 @@ def fetch_cataas():
                             'source': 'CATAAS',
                             'breed': 'Unknown'
                         })
+                
+                # Try to fetch another batch as well
+                if len(urls) < 100:
+                    try:
+                        url2 = 'https://cataas.com/api/cats?limit=100&skip=100'
+                        response2 = requests.get(url2, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+                        if response2.status_code == 200:
+                            data2 = response2.json()
+                            cats2 = data2 if isinstance(data2, list) else data2.get('data', [])
+                            for cat in cats2:
+                                cat_id = cat.get('_id') or cat.get('id')
+                                if cat_id:
+                                    urls.append({
+                                        'url': f'https://cataas.com/cat/{cat_id}',
+                                        'title': 'Random Cat',
+                                        'author': 'CATAAS',
+                                        'source': 'CATAAS',
+                                        'breed': 'Unknown'
+                                    })
+                    except:
+                        pass
+                
                 return urls if urls else None
     except Exception as e:
         print(f"CATAAS error: {e}")
     return None
 
 @st.cache_data(ttl=3600)
-def fetch_random_cat():
-    """Fetch from Random.cat API - completely free, no auth"""
+def fetch_random_cat_batch():
+    """Fetch multiple cats from Random.cat API - batch fetch instead of 1 at a time"""
     try:
-        url = 'https://api.random.cat/meow'
-        response = requests.get(url, timeout=10)
+        # Random.cat doesn't support batch, so we'll fetch multiple times and cache
+        batch = []
+        for _ in range(50):  # Fetch 50 cats in this batch
+            try:
+                url = 'https://api.random.cat/meow'
+                response = requests.get(url, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    cat_url = data.get('file')
+                    if cat_url and cat_url not in [c['url'] for c in batch]:  # Avoid duplicates
+                        batch.append({
+                            'url': cat_url,
+                            'title': 'Random Cat',
+                            'author': 'Random.cat',
+                            'source': 'Random.cat',
+                            'breed': 'Unknown'
+                        })
+                    if len(batch) >= 50:
+                        break
+            except:
+                continue
         
-        if response.status_code == 200:
-            data = response.json()
-            cat_url = data.get('file')
-            if cat_url:
-                return [{
-                    'url': cat_url,
-                    'title': 'Random Cat',
-                    'author': 'Random.cat',
-                    'source': 'Random.cat',
-                    'breed': 'Unknown'
-                }]
+        return batch if batch else None
     except Exception as e:
-        print(f"Random.cat error: {e}")
+        print(f"Random.cat batch error: {e}")
     return None
 
 @st.cache_data(ttl=3600)
@@ -344,10 +404,10 @@ def get_random_cat():
             if cat and is_black_cat_with_huggingface(cat['url']):
                 return cat
     
-    # Final fallback: try Random.cat with validation
-    for _ in range(3):
-        random_cats = fetch_random_cat()
-        if random_cats:
+    # Final fallback: try Random.cat batch with validation
+    random_cats = fetch_random_cat_batch()
+    if random_cats:
+        for _ in range(10):
             cat = get_unseen_cat(random_cats)
             if cat and is_black_cat_with_huggingface(cat['url']):
                 return cat
