@@ -43,6 +43,13 @@ st.markdown("""
 st.title("🐱 Random Black Cats 🐱")
 st.markdown("<p class='subtitle'>Purr-fectly Charming Felines</p>", unsafe_allow_html=True)
 
+# Sidebar metrics
+with st.sidebar:
+    st.markdown("### 📊 Metrics")
+    st.metric("✅ Accepted Cats", st.session_state.accepted_cats)
+    st.metric("❌ Rejected Cats", st.session_state.rejected_cats)
+    st.metric("📈 Total Fetched", st.session_state.total_fetched)
+
 # Initialize session state
 if 'cat_counter' not in st.session_state:
     st.session_state.cat_counter = 0
@@ -62,6 +69,12 @@ if 'cat_history' not in st.session_state:
     st.session_state.cat_history = []
 if 'history_index' not in st.session_state:
     st.session_state.history_index = -1
+if 'accepted_cats' not in st.session_state:
+    st.session_state.accepted_cats = 0
+if 'rejected_cats' not in st.session_state:
+    st.session_state.rejected_cats = 0
+if 'total_fetched' not in st.session_state:
+    st.session_state.total_fetched = 0
 
 @st.cache_data(ttl=3600)
 def fetch_reddit_cats():
@@ -389,6 +402,7 @@ def get_random_cat():
     if reddit_cats:
         cat = get_unseen_cat(reddit_cats)
         if cat:
+            st.session_state.total_fetched += 1
             return cat
     
     # Fallback to Cat API (has guaranteed black breed filtering)
@@ -396,6 +410,7 @@ def get_random_cat():
     if cat_api_cats:
         cat = get_unseen_cat(cat_api_cats)
         if cat:
+            st.session_state.total_fetched += 1
             return cat
     
     # Try CATAAS with validation (verify it's a black cat)
@@ -404,16 +419,24 @@ def get_random_cat():
         # Keep trying until we find a black cat or run out
         for _ in range(5):
             cat = get_unseen_cat(cataas_cats)
-            if cat and is_black_cat_with_huggingface(cat['url']):
-                return cat
+            if cat:
+                st.session_state.total_fetched += 1
+                if is_black_cat_with_huggingface(cat['url']):
+                    return cat
+                else:
+                    st.session_state.rejected_cats += 1
     
     # Final fallback: try Random.cat batch with validation
     random_cats = fetch_random_cat_batch()
     if random_cats:
         for _ in range(10):
             cat = get_unseen_cat(random_cats)
-            if cat and is_black_cat_with_huggingface(cat['url']):
-                return cat
+            if cat:
+                st.session_state.total_fetched += 1
+                if is_black_cat_with_huggingface(cat['url']):
+                    return cat
+                else:
+                    st.session_state.rejected_cats += 1
     
     return None
 
@@ -425,6 +448,7 @@ def display_cat(cat_data):
     st.session_state.current_source = cat_data.get('source', 'Unknown')
     st.session_state.current_breed = cat_data.get('breed', 'Unknown')
     st.session_state.cat_counter += 1
+    st.session_state.accepted_cats += 1  # Track accepted cats
     # Track this cat URL to avoid repeats
     st.session_state.seen_cats.add(cat_data['url'])
     
@@ -533,8 +557,12 @@ else:
 # Stats
 st.divider()
 col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("✅ Accepted", st.session_state.accepted_cats)
 with col2:
-    st.metric("Cats Viewed", st.session_state.cat_counter)
+    st.metric("❌ Rejected", st.session_state.rejected_cats)
+with col3:
+    st.metric("📈 Total Fetched", st.session_state.total_fetched)
 
 # Footer
 st.markdown("""
