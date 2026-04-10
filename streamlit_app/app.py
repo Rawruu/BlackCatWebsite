@@ -11,6 +11,32 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Initialize session state FIRST (before any UI elements)
+if 'cat_counter' not in st.session_state:
+    st.session_state.cat_counter = 0
+if 'current_cat' not in st.session_state:
+    st.session_state.current_cat = None
+if 'current_title' not in st.session_state:
+    st.session_state.current_title = ''
+if 'current_author' not in st.session_state:
+    st.session_state.current_author = ''
+if 'current_source' not in st.session_state:
+    st.session_state.current_source = ''
+if 'current_breed' not in st.session_state:
+    st.session_state.current_breed = ''
+if 'seen_cats' not in st.session_state:
+    st.session_state.seen_cats = set()
+if 'cat_history' not in st.session_state:
+    st.session_state.cat_history = []
+if 'history_index' not in st.session_state:
+    st.session_state.history_index = -1
+if 'accepted_cats' not in st.session_state:
+    st.session_state.accepted_cats = 0
+if 'rejected_cats' not in st.session_state:
+    st.session_state.rejected_cats = 0
+if 'total_fetched' not in st.session_state:
+    st.session_state.total_fetched = 0
+
 # Custom CSS
 st.markdown("""
     <style>
@@ -49,32 +75,6 @@ with st.sidebar:
     st.metric("✅ Accepted Cats", st.session_state.accepted_cats)
     st.metric("❌ Rejected Cats", st.session_state.rejected_cats)
     st.metric("📈 Total Fetched", st.session_state.total_fetched)
-
-# Initialize session state
-if 'cat_counter' not in st.session_state:
-    st.session_state.cat_counter = 0
-if 'current_cat' not in st.session_state:
-    st.session_state.current_cat = None
-if 'current_title' not in st.session_state:
-    st.session_state.current_title = ''
-if 'current_author' not in st.session_state:
-    st.session_state.current_author = ''
-if 'current_source' not in st.session_state:
-    st.session_state.current_source = ''
-if 'current_breed' not in st.session_state:
-    st.session_state.current_breed = ''
-if 'seen_cats' not in st.session_state:
-    st.session_state.seen_cats = set()
-if 'cat_history' not in st.session_state:
-    st.session_state.cat_history = []
-if 'history_index' not in st.session_state:
-    st.session_state.history_index = -1
-if 'accepted_cats' not in st.session_state:
-    st.session_state.accepted_cats = 0
-if 'rejected_cats' not in st.session_state:
-    st.session_state.rejected_cats = 0
-if 'total_fetched' not in st.session_state:
-    st.session_state.total_fetched = 0
 
 @st.cache_data(ttl=3600)
 def fetch_reddit_cats():
@@ -449,6 +449,7 @@ def display_cat(cat_data):
     st.session_state.current_breed = cat_data.get('breed', 'Unknown')
     st.session_state.cat_counter += 1
     st.session_state.accepted_cats += 1  # Track accepted cats
+    st.session_state.total_fetched += 1  # Track total
     # Track this cat URL to avoid repeats
     st.session_state.seen_cats.add(cat_data['url'])
     
@@ -557,12 +558,8 @@ else:
 # Stats
 st.divider()
 col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("✅ Accepted", st.session_state.accepted_cats)
 with col2:
-    st.metric("❌ Rejected", st.session_state.rejected_cats)
-with col3:
-    st.metric("📈 Total Fetched", st.session_state.total_fetched)
+    st.metric("Cats Viewed", st.session_state.cat_counter)
 
 # Footer
 st.markdown("""
