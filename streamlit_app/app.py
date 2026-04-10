@@ -341,7 +341,7 @@ if st.session_state.current_cat:
     st.divider()
     
     try:
-        st.image(st.session_state.current_cat, use_column_width=True)
+        st.image(st.session_state.current_cat, width=760)
     except:
         st.error("Could not load image")
     
