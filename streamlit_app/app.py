@@ -158,23 +158,30 @@ def fetch_cat_api():
 def fetch_cataas():
     """Fallback to CATAAS (Cat As A Service) - no auth required"""
     try:
-        url = 'https://cataas.com/api/cats?limit=10'
-        response = requests.get(url, timeout=10)
+        # CATAAS API returns cat list
+        url = 'https://cataas.com/api/cats?limit=20'
+        response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
         
         if response.status_code == 200:
-            cats = response.json()
-            return [
-                {
-                    'url': f'https://cataas.com/cat/{cat["_id"]}',
-                    'title': 'Random Cat',
-                    'author': 'CATAAS',
-                    'source': 'CATAAS',
-                    'breed': 'Unknown'
-                }
-                for cat in cats
-            ]
-    except:
-        pass
+            data = response.json()
+            # Handle both direct list and wrapped response
+            cats = data if isinstance(data, list) else data.get('data', [])
+            
+            if cats:
+                urls = []
+                for cat in cats:
+                    cat_id = cat.get('_id') or cat.get('id')
+                    if cat_id:
+                        urls.append({
+                            'url': f'https://cataas.com/cat/{cat_id}',
+                            'title': 'Random Cat',
+                            'author': 'CATAAS',
+                            'source': 'CATAAS',
+                            'breed': 'Unknown'
+                        })
+                return urls if urls else None
+    except Exception as e:
+        print(f"CATAAS error: {e}")
     return None
 
 def get_random_cat():
