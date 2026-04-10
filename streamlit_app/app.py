@@ -58,6 +58,10 @@ if 'current_breed' not in st.session_state:
     st.session_state.current_breed = ''
 if 'seen_cats' not in st.session_state:
     st.session_state.seen_cats = set()
+if 'cat_history' not in st.session_state:
+    st.session_state.cat_history = []
+if 'history_index' not in st.session_state:
+    st.session_state.history_index = -1
 
 @st.cache_data(ttl=3600)
 def fetch_reddit_cats():
@@ -315,6 +319,10 @@ def display_cat(cat_data):
     # Track this cat URL to avoid repeats
     st.session_state.seen_cats.add(cat_data['url'])
     
+    # Add to history and update index
+    st.session_state.cat_history.append(cat_data)
+    st.session_state.history_index = len(st.session_state.cat_history) - 1
+    
     # Try to identify breed using HuggingFace if breed is unknown
     if st.session_state.current_breed == 'Unknown' and st.session_state.current_cat:
         try:
@@ -340,15 +348,49 @@ with col2:
 if st.session_state.current_cat:
     st.divider()
     
-    try:
-        st.image(st.session_state.current_cat, width=760)
-    except:
-        st.error("Could not load image")
+    # Navigation buttons with image
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col1:
+        if st.button("◀️ Back", use_container_width=True, disabled=(st.session_state.history_index <= 0)):
+            if st.session_state.history_index > 0:
+                st.session_state.history_index -= 1
+                prev_cat = st.session_state.cat_history[st.session_state.history_index]
+                st.session_state.current_cat = prev_cat['url']
+                st.session_state.current_title = prev_cat.get('title', 'Black Cat')
+                st.session_state.current_author = prev_cat.get('author', 'anonymous')
+                st.session_state.current_source = prev_cat.get('source', 'Unknown')
+                st.session_state.current_breed = prev_cat.get('breed', 'Unknown')
+                st.rerun()
+    
+    with col2:
+        try:
+            st.image(st.session_state.current_cat, width=760)
+        except:
+            st.error("Could not load image")
+    
+    with col3:
+        if st.button("Forward ▶️", use_container_width=True):
+            if st.session_state.history_index < len(st.session_state.cat_history) - 1:
+                st.session_state.history_index += 1
+                next_cat = st.session_state.cat_history[st.session_state.history_index]
+                st.session_state.current_cat = next_cat['url']
+                st.session_state.current_title = next_cat.get('title', 'Black Cat')
+                st.session_state.current_author = next_cat.get('author', 'anonymous')
+                st.session_state.current_source = next_cat.get('source', 'Unknown')
+                st.session_state.current_breed = next_cat.get('breed', 'Unknown')
+                st.rerun()
+            else:
+                # If at end of history, get new cat
+                cat_data = get_random_cat()
+                if cat_data:
+                    display_cat(cat_data)
+                    st.rerun()
     
     st.markdown(f"""
     <div class='info-box'>
     <strong>🐱 {st.session_state.current_title}</strong><br>
-    Breed: {st.session_state.current_breed} • {st.session_state.current_source}
+    {st.session_state.current_source}
     </div>
     """, unsafe_allow_html=True)
     
