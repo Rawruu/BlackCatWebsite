@@ -152,8 +152,31 @@ def fetch_cat_api():
         pass
     return None
 
+@st.cache_data(ttl=3600)
+def fetch_cataas():
+    """Fallback to CATAAS (Cat As A Service) - no auth required"""
+    try:
+        url = 'https://cataas.com/api/cats?limit=10'
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            cats = response.json()
+            return [
+                {
+                    'url': f'https://cataas.com/cat/{cat["_id"]}',
+                    'title': 'Random Cat',
+                    'author': 'CATAAS',
+                    'source': 'CATAAS',
+                    'breed': 'Unknown'
+                }
+                for cat in cats
+            ]
+    except:
+        pass
+    return None
+
 def get_random_cat():
-    """Get cat from Reddit, fallback to Cat API"""
+    """Get cat from Reddit → Cat API → CATAAS"""
     # Try Reddit first
     reddit_cats = fetch_reddit_cats()
     if reddit_cats:
@@ -163,6 +186,11 @@ def get_random_cat():
     cat_api_cats = fetch_cat_api()
     if cat_api_cats:
         return random.choice(cat_api_cats)
+    
+    # Final fallback to CATAAS
+    cataas_cats = fetch_cataas()
+    if cataas_cats:
+        return random.choice(cataas_cats)
     
     return None
 
