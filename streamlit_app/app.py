@@ -55,6 +55,8 @@ if 'current_source' not in st.session_state:
     st.session_state.current_source = ''
 if 'current_breed' not in st.session_state:
     st.session_state.current_breed = ''
+if 'seen_cats' not in st.session_state:
+    st.session_state.seen_cats = set()
 
 @st.cache_data(ttl=3600)
 def fetch_reddit_cats():
@@ -176,32 +178,47 @@ def fetch_cataas():
     return None
 
 def get_random_cat():
-    """Get cat from Reddit → Cat API → CATAAS"""
+    """Get cat from Reddit → CATAAS → Cat API, avoiding repeats"""
+    def get_unseen_cat(cats_list):
+        """Filter out previously seen cat URLs"""
+        if not cats_list:
+            return None
+        unseen = [cat for cat in cats_list if cat['url'] not in st.session_state.seen_cats]
+        return random.choice(unseen) if unseen else None
+    
     # Try Reddit first
     reddit_cats = fetch_reddit_cats()
     if reddit_cats:
-        return random.choice(reddit_cats)
+        cat = get_unseen_cat(reddit_cats)
+        if cat:
+            return cat
     
-    # Fallback to Cat API
-    cat_api_cats = fetch_cat_api()
-    if cat_api_cats:
-        return random.choice(cat_api_cats)
-    
-    # Final fallback to CATAAS
+    # Fallback to CATAAS (second choice)
     cataas_cats = fetch_cataas()
     if cataas_cats:
-        return random.choice(cataas_cats)
+        cat = get_unseen_cat(cataas_cats)
+        if cat:
+            return cat
+    
+    # Final fallback to Cat API
+    cat_api_cats = fetch_cat_api()
+    if cat_api_cats:
+        cat = get_unseen_cat(cat_api_cats)
+        if cat:
+            return cat
     
     return None
 
 def display_cat(cat_data):
-    """Display cat information"""
+    """Display cat information and track it as seen"""
     st.session_state.current_cat = cat_data['url']
     st.session_state.current_title = cat_data.get('title', 'Black Cat')
     st.session_state.current_author = cat_data.get('author', 'anonymous')
     st.session_state.current_source = cat_data.get('source', 'Unknown')
     st.session_state.current_breed = cat_data.get('breed', 'Unknown')
     st.session_state.cat_counter += 1
+    # Track this cat URL to avoid repeats
+    st.session_state.seen_cats.add(cat_data['url'])
 
 # Main button
 col1, col2, col3 = st.columns([1, 2, 1])
