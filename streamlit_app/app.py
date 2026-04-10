@@ -212,6 +212,50 @@ def fetch_random_cat():
     return None
 
 @st.cache_data(ttl=3600)
+def is_black_cat_with_huggingface(image_url):
+    """Use HuggingFace to verify if the cat image is primarily black"""
+    try:
+        # Using image-to-text model to describe the cat
+        hf_url = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
+        
+        headers = {
+            "User-Agent": "BlackCatApp/1.0"
+        }
+        
+        payload = {"inputs": image_url}
+        response = requests.post(hf_url, headers=headers, json=payload, timeout=15)
+        
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                caption = result[0].get('generated_text', '').lower()
+                
+                # Check for black/dark indicators
+                black_indicators = ['black', 'dark', 'ebony', 'raven', 'midnight', 'shadow', 'coal']
+                non_black_indicators = ['white', 'orange', 'ginger', 'red', 'tabby', 'calico', 'gray', 'grey', 'brown', 'tan', 'cream', 'yellow', 'siamese']
+                
+                has_black = any(indicator in caption for indicator in black_indicators)
+                has_non_black = any(indicator in caption for indicator in non_black_indicators)
+                
+                # If it explicitly mentions black-related terms and doesn't mention color contradictions, accept it
+                if has_black and not has_non_black:
+                    return True
+                
+                # If it mentions non-black colors, reject it
+                if has_non_black:
+                    return False
+                
+                # Default: accept if we found a cat description without clear color info
+                if 'cat' in caption:
+                    return True
+        
+    except Exception as e:
+        print(f"Color verification error: {e}")
+    
+    # If API fails, accept the cat (less filtering is better than rejecting everything)
+    return True
+
+@st.cache_data(ttl=3600)
 def identify_breed_with_huggingface(image_url):
     """Use HuggingFace free inference to identify cat breed from image URL"""
     try:
@@ -220,7 +264,6 @@ def identify_breed_with_huggingface(image_url):
         hf_url = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
         
         headers = {
-            "Authorization": "Bearer hf_placeholder",  # Free tier doesn't require auth
             "User-Agent": "BlackCatApp/1.0"
         }
         
@@ -270,7 +313,7 @@ def identify_breed_with_huggingface(image_url):
 
 
 def get_random_cat():
-    """Get cat from Reddit → CATAAS → Cat API → Random.cat, avoiding repeats"""
+    """Get cat from Reddit → Cat API → CATAAS, avoiding repeats and non-black cats"""
     def get_unseen_cat(cats_list):
         """Filter out previously seen cat URLs"""
         if not cats_list:
@@ -278,38 +321,41 @@ def get_random_cat():
         unseen = [cat for cat in cats_list if cat['url'] not in st.session_state.seen_cats]
         return random.choice(unseen) if unseen else None
     
-    # Try Reddit first
+    # Try Reddit first (most reliable for black cats)
     reddit_cats = fetch_reddit_cats()
     if reddit_cats:
         cat = get_unseen_cat(reddit_cats)
         if cat:
             return cat
     
-    # Fallback to CATAAS (second choice)
-    cataas_cats = fetch_cataas()
-    if cataas_cats:
-        cat = get_unseen_cat(cataas_cats)
-        if cat:
-            return cat
-    
-    # Fallback to Cat API
+    # Fallback to Cat API (has guaranteed black breed filtering)
     cat_api_cats = fetch_cat_api()
     if cat_api_cats:
         cat = get_unseen_cat(cat_api_cats)
         if cat:
             return cat
     
-    # Final fallback to Random.cat (free, no breed filtering but adds variety)
-    random_cats = fetch_random_cat()
-    if random_cats:
-        cat = get_unseen_cat(random_cats)
-        if cat:
-            return cat
+    # Try CATAAS with validation (verify it's a black cat)
+    cataas_cats = fetch_cataas()
+    if cataas_cats:
+        # Keep trying until we find a black cat or run out
+        for _ in range(5):
+            cat = get_unseen_cat(cataas_cats)
+            if cat and is_black_cat_with_huggingface(cat['url']):
+                return cat
+    
+    # Final fallback: try Random.cat with validation
+    for _ in range(3):
+        random_cats = fetch_random_cat()
+        if random_cats:
+            cat = get_unseen_cat(random_cats)
+            if cat and is_black_cat_with_huggingface(cat['url']):
+                return cat
     
     return None
 
 def display_cat(cat_data):
-    """Display cat information, track it as seen, and identify breed"""
+    """Display cat information, track it as seen, validate it's black, and identify breed"""
     st.session_state.current_cat = cat_data['url']
     st.session_state.current_title = cat_data.get('title', 'Black Cat')
     st.session_state.current_author = cat_data.get('author', 'anonymous')
@@ -323,14 +369,24 @@ def display_cat(cat_data):
     st.session_state.cat_history.append(cat_data)
     st.session_state.history_index = len(st.session_state.cat_history) - 1
     
-    # Try to identify breed using HuggingFace if breed is unknown
-    if st.session_state.current_breed == 'Unknown' and st.session_state.current_cat:
+    # Verify it's actually a black cat and identify breed using HuggingFace
+    if st.session_state.current_cat:
         try:
+            # First verify it's black
+            is_black = is_black_cat_with_huggingface(st.session_state.current_cat)
+            
+            # Then identify breed
             identified_breed = identify_breed_with_huggingface(st.session_state.current_cat)
+            
             if identified_breed and identified_breed != 'Unknown':
                 st.session_state.current_breed = identified_breed
+            
+            # If we detected it's not black, we can mark it for later retry logic
+            if not is_black:
+                st.session_state.current_breed = f"{st.session_state.current_breed} (❌ Not black)"
+                
         except:
-            pass  # Keep breed as Unknown if identification fails
+            pass  # Continue with breed identification failure
 
 # Main button
 col1, col2, col3 = st.columns([1, 2, 1])
