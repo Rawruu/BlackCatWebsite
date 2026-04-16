@@ -92,32 +92,28 @@ def reddit_image_posts(sub: str, sort: str, qs: str) -> list:
         return []
 
 
-CAT_API_BREEDS = ['bom', 'bsh', 'orie', 'mnx', 'srex', 'drex']
-
 def fetch_cat_api_pool() -> list:
-    """Always-available fallback: thecatapi.com black/dark breeds."""
+    """Bombay breed only — the one Cat API breed that is always solid black."""
     pool = []
-    for breed in CAT_API_BREEDS:
-        try:
-            r = requests.get(
-                f'https://api.thecatapi.com/v1/images/search?limit=25&breed_ids={breed}',
-                timeout=12,
-            )
-            if r.status_code == 200:
-                items = r.json()
-                for c in items:
-                    breed_name = (c.get('breeds') or [{}])[0].get('name', 'Cat')
-                    pool.append({
-                        'url': c['url'],
-                        'title': breed_name,
-                        'author': 'The Cat API',
-                        'source': f'Cat API — {breed_name}',
-                    })
-                log(f"  ✓ Cat API breed={breed} → {len(items)} images")
-            else:
-                log(f"  ✗ Cat API breed={breed} → HTTP {r.status_code}")
-        except Exception as e:
-            log(f"  ✗ Cat API breed={breed} → {e}")
+    try:
+        r = requests.get(
+            'https://api.thecatapi.com/v1/images/search?limit=50&breed_ids=bom',
+            timeout=12,
+        )
+        if r.status_code == 200:
+            items = r.json()
+            for c in items:
+                pool.append({
+                    'url': c['url'],
+                    'title': 'Bombay',
+                    'author': 'The Cat API',
+                    'source': 'Cat API — Bombay',
+                })
+            log(f"  ✓ Cat API (Bombay) → {len(items)} images")
+        else:
+            log(f"  ✗ Cat API (Bombay) → HTTP {r.status_code}")
+    except Exception as e:
+        log(f"  ✗ Cat API (Bombay) → {e}")
     return pool
 
 
