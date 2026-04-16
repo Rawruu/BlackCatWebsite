@@ -3,8 +3,8 @@ import requests
 import random
 
 st.set_page_config(
-    page_title="Random Black Cats",
-    page_icon="🐱",
+    page_title="Black Cat Sanctuary",
+    page_icon="🌿",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
@@ -29,20 +29,163 @@ for k, v in defaults.items():
 # ── Styling ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-h1 { color: #ffd700; text-align: center; }
-.subtitle { text-align: center; color: #b0b0b0; font-style: italic; }
+/* ── Background ── */
+.stApp {
+    background: linear-gradient(160deg, #1a2e1e 0%, #1e2d28 45%, #1c2a22 100%);
+    min-height: 100vh;
+}
+
+/* ── Typography ── */
+h1 {
+    font-family: Georgia, 'Times New Roman', serif !important;
+    color: #c8ddb8 !important;
+    text-align: center;
+    font-weight: normal !important;
+    letter-spacing: 2px;
+    text-shadow: 0 2px 14px rgba(0,0,0,0.45);
+}
+h2, h3 {
+    font-family: Georgia, serif !important;
+    color: #b8cca8 !important;
+    font-weight: normal !important;
+}
+
+/* ── Header decoration ── */
+.sanctuary-header {
+    text-align: center;
+    margin-bottom: 0.25rem;
+}
+.leaf-divider {
+    text-align: center;
+    color: #6a8c6a;
+    font-size: 1.1rem;
+    letter-spacing: 6px;
+    margin: 0.1rem 0 0.6rem 0;
+}
+.subtitle {
+    text-align: center;
+    color: #8aad82;
+    font-style: italic;
+    font-family: Georgia, serif;
+    font-size: 1rem;
+    letter-spacing: 0.4px;
+    margin-bottom: 0.25rem;
+}
+
+/* ── Dividers ── */
+hr {
+    border: none !important;
+    border-top: 1px solid rgba(168, 197, 160, 0.18) !important;
+    margin: 1rem 0 !important;
+}
+
+/* ── Image ── */
+[data-testid="stImage"] img {
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+/* ── Info card ── */
 .info-box {
-    background: rgba(255,215,0,0.08);
-    border-left: 4px solid #ffd700;
-    padding: 12px 16px;
-    border-radius: 5px;
-    margin-top: 12px;
+    background: rgba(168, 197, 160, 0.07);
+    border-left: 3px solid #8ab87e;
+    padding: 13px 18px;
+    border-radius: 0 12px 12px 0;
+    margin-top: 14px;
+    color: #d0e8c8;
+    font-family: Georgia, serif;
+}
+.info-box small {
+    color: #8aad82;
+}
+
+/* ── Buttons ── */
+.stButton > button {
+    background: rgba(168, 197, 160, 0.12) !important;
+    border: 1px solid rgba(168, 197, 160, 0.32) !important;
+    color: #c4dbb4 !important;
+    border-radius: 28px !important;
+    font-family: Georgia, serif !important;
+    letter-spacing: 0.3px;
+    transition: all 0.22s ease !important;
+}
+.stButton > button:hover {
+    background: rgba(168, 197, 160, 0.26) !important;
+    border-color: rgba(168, 197, 160, 0.58) !important;
+    color: #dff0d0 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+}
+.stButton > button:disabled {
+    background: rgba(168, 197, 160, 0.04) !important;
+    border-color: rgba(168, 197, 160, 0.1) !important;
+    color: rgba(168, 197, 160, 0.28) !important;
+    transform: none !important;
+}
+
+/* ── Download button (dusty rose) ── */
+[data-testid="stDownloadButton"] > button {
+    background: rgba(196, 168, 168, 0.12) !important;
+    border: 1px solid rgba(196, 168, 168, 0.32) !important;
+    color: #ddc4c4 !important;
+    border-radius: 28px !important;
+    font-family: Georgia, serif !important;
+}
+[data-testid="stDownloadButton"] > button:hover {
+    background: rgba(196, 168, 168, 0.26) !important;
+    border-color: rgba(196, 168, 168, 0.58) !important;
+    color: #f0d8d8 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+}
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background: rgba(18, 32, 22, 0.97) !important;
+    border-right: 1px solid rgba(168, 197, 160, 0.12) !important;
+}
+
+/* ── Metrics ── */
+[data-testid="metric-container"] {
+    background: rgba(168, 197, 160, 0.07) !important;
+    border-radius: 12px !important;
+    padding: 10px 14px !important;
+    border: 1px solid rgba(168, 197, 160, 0.13) !important;
+}
+[data-testid="stMetricLabel"] p { color: #8aad82 !important; }
+[data-testid="stMetricValue"]   { color: #c4dbb4 !important; }
+
+/* ── Alerts ── */
+[data-testid="stAlert"] {
+    border-radius: 12px !important;
+    background: rgba(168, 197, 160, 0.07) !important;
+    border: 1px solid rgba(168, 197, 160, 0.22) !important;
+    color: #c4dbb4 !important;
+}
+
+/* ── Expanders ── */
+[data-testid="stExpander"] {
+    border: 1px solid rgba(168, 197, 160, 0.18) !important;
+    border-radius: 12px !important;
+    background: rgba(168, 197, 160, 0.03) !important;
+}
+
+/* ── Footer ── */
+.footer {
+    text-align: center;
+    color: #5a7a5a;
+    font-size: 0.82rem;
+    margin-top: 2rem;
+    font-style: italic;
+    font-family: Georgia, serif;
+    letter-spacing: 0.3px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🐱 Random Black Cats 🐱")
-st.markdown("<p class='subtitle'>Purr-fectly Charming Felines</p>", unsafe_allow_html=True)
+st.markdown("<div class='sanctuary-header'><h1>🌿 Black Cat Sanctuary 🌿</h1></div>", unsafe_allow_html=True)
+st.markdown("<div class='leaf-divider'>· · ·</div>", unsafe_allow_html=True)
+st.markdown("<p class='subtitle'>A peaceful haven for the most mysterious of creatures</p>", unsafe_allow_html=True)
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 HEADERS = {
@@ -173,7 +316,7 @@ def show_cat(cat: dict):
 
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
 if not st.session_state.pool:
-    with st.spinner("Fetching black cats…"):
+    with st.spinner("Gathering cats from the garden…"):
         st.session_state.pool = build_pool()
 
 if st.session_state.history_index == -1:
@@ -183,19 +326,21 @@ if st.session_state.history_index == -1:
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### 📊 Stats")
-    st.metric("🐈‍⬛ Cats viewed", st.session_state.cat_counter)
-    st.metric("📚 Pool size", len(st.session_state.pool))
+    st.markdown("### 🌿 Your Garden")
+    st.metric("🐈‍⬛ Cats visited", st.session_state.cat_counter)
+    st.metric("🌱 Available", len(st.session_state.pool))
     st.metric("👁️ Already seen", len(st.session_state.seen_cats))
 
-    if st.button("🔄 Refresh pool"):
+    st.markdown("")
+    if st.button("🔄 Find more cats", use_container_width=True):
         st.session_state.pool = build_pool()
         st.session_state.seen_cats.clear()
         st.rerun()
 
     if st.session_state.fetch_log:
-        st.markdown("### 🔍 Fetch log")
-        st.code("\n".join(st.session_state.fetch_log), language=None)
+        st.markdown("---")
+        with st.expander("🔍 Fetch log"):
+            st.code("\n".join(st.session_state.fetch_log), language=None)
 
 # ── Main UI ────────────────────────────────────────────────────────────────────
 if st.session_state.current_cat:
@@ -242,15 +387,10 @@ if st.session_state.current_cat:
                 else:
                     st.warning("No cats available — click 'Refresh pool' in the sidebar.")
 
-    author_suffix = (
-        f"&nbsp;• u/{st.session_state.current_author}"
-        if st.session_state.current_source.startswith("r/") and st.session_state.current_author
-        else ""
-    )
     st.markdown(f"""
     <div class='info-box'>
-    <strong>🐱 {st.session_state.current_title}</strong><br>
-    <small>Source: {st.session_state.current_source}{author_suffix}</small>
+    <strong>🐈‍⬛ {st.session_state.current_title}</strong><br>
+    <small>🌿 {st.session_state.current_source}</small>
     </div>
     """, unsafe_allow_html=True)
 
@@ -272,21 +412,23 @@ if st.session_state.current_cat:
 
 else:
     st.divider()
+    st.markdown("<br>", unsafe_allow_html=True)
     _, col_btn, _ = st.columns([1, 2, 1])
     with col_btn:
-        if st.button("🐱 Show me a black cat!", use_container_width=True):
+        if st.button("🌿 Meet a black cat", use_container_width=True):
             cat = pick_cat()
             if cat:
                 show_cat(cat)
                 st.rerun()
             else:
-                st.error("Couldn't load any cats — try 'Refresh pool' in the sidebar.")
+                st.error("No cats found — try 'Find more cats' in the sidebar.")
     if st.session_state.fetch_log:
-        with st.expander("Fetch log (debug)"):
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("🔍 Fetch log"):
             st.code("\n".join(st.session_state.fetch_log))
 
 st.markdown("""
-<div style='text-align:center;color:#888;font-size:0.85rem;margin-top:1rem;'>
-Made with ❤️ for cat lovers
+<div class='footer'>
+🌿 &nbsp; made with love, for cat lovers everywhere &nbsp; 🌿
 </div>
 """, unsafe_allow_html=True)
