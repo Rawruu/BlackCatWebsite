@@ -52,68 +52,76 @@ HEADERS = {
     )
 }
 
-# Subreddits that are 100% curated black cats
-SUBREDDITS = ['blackcats', 'SuperBlackCats', 'voidcats']
-SORTS = {
-    'hot':  '?limit=100',
-    'new':  '?limit=100',
-    'top':  '?t=month&limit=100',
-}
-
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def log(msg: str):
     st.session_state.fetch_log.append(msg)
 
 
-def reddit_image_posts(sub: str, sort: str, qs: str) -> list:
-    url = f"https://www.reddit.com/r/{sub}/{sort}.json{qs}"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=12)
-        if r.status_code != 200:
-            log(f"  ✗ r/{sub}/{sort} → HTTP {r.status_code}")
-            return []
-        posts = []
-        for child in r.json()['data']['children']:
-            d = child['data']
-            if d.get('stickied') or d.get('is_self'):
-                continue
-            post_url = d.get('url', '')
-            if 'i.redd.it' in post_url:
-                posts.append({
-                    'url': post_url,
-                    'title': d.get('title', 'Black Cat'),
-                    'author': d.get('author', 'anonymous'),
-                    'source': f"r/{sub}",
-                })
-        log(f"  ✓ r/{sub}/{sort} → {len(posts)} images")
-        return posts
-    except Exception as e:
-        log(f"  ✗ r/{sub}/{sort} → {e}")
-        return []
-
-
-def fetch_cat_api_pool() -> list:
-    """Bombay breed only — the one Cat API breed that is always solid black."""
+def fetch_cataas() -> list:
+    """CATAAS — filter by 'black' tag. No auth, cloud-friendly."""
     pool = []
     try:
         r = requests.get(
-            'https://api.thecatapi.com/v1/images/search?limit=50&breed_ids=bom',
-            timeout=12,
+            'https://cataas.com/api/cats?tags=black&limit=50',
+            headers=HEADERS, timeout=12,
         )
         if r.status_code == 200:
-            items = r.json()
-            for c in items:
-                pool.append({
-                    'url': c['url'],
-                    'title': 'Bombay',
-                    'author': 'The Cat API',
-                    'source': 'Cat API — Bombay',
-                })
-            log(f"  ✓ Cat API (Bombay) → {len(items)} images")
+            data = r.json()
+            cats = data if isinstance(data, list) else data.get('cats', [])
+            for c in cats:
+                cat_id = c.get('_id') or c.get('id')
+                if cat_id:
+                    pool.append({
+                        'url': f'https://cataas.com/cat/{cat_id}',
+                        'title': 'Black Cat',
+                        'author': 'CATAAS',
+                        'source': 'cataas.com',
+                    })
+            log(f"  ✓ CATAAS (black tag) → {len(pool)} images")
         else:
-            log(f"  ✗ Cat API (Bombay) → HTTP {r.status_code}")
+            log(f"  ✗ CATAAS → HTTP {r.status_code}")
     except Exception as e:
-        log(f"  ✗ Cat API (Bombay) → {e}")
+        log(f"  ✗ CATAAS → {e}")
+    return pool
+
+
+def fetch_wikimedia() -> list:
+    """Wikimedia Commons — Category:Black_cats. No auth, cloud-friendly."""
+    pool = []
+    try:
+        r = requests.get(
+            'https://commons.wikimedia.org/w/api.php',
+            params={
+                'action': 'query',
+                'generator': 'categorymembers',
+                'gcmtitle': 'Category:Black_cats',
+                'gcmtype': 'file',
+                'gcmlimit': '50',
+                'prop': 'imageinfo',
+                'iiprop': 'url',
+                'format': 'json',
+                'origin': '*',
+            },
+            headers=HEADERS, timeout=12,
+        )
+        if r.status_code == 200:
+            pages = r.json().get('query', {}).get('pages', {})
+            for page in pages.values():
+                imageinfo = page.get('imageinfo') or []
+                url = imageinfo[0].get('url', '') if imageinfo else ''
+                if url and url.lower().split('?')[0].endswith(('.jpg', '.jpeg', '.png')):
+                    title = page.get('title', 'Black Cat').replace('File:', '').rsplit('.', 1)[0]
+                    pool.append({
+                        'url': url,
+                        'title': title,
+                        'author': 'Wikimedia Commons',
+                        'source': 'Wikimedia Commons',
+                    })
+            log(f"  ✓ Wikimedia Commons → {len(pool)} images")
+        else:
+            log(f"  ✗ Wikimedia → HTTP {r.status_code}")
+    except Exception as e:
+        log(f"  ✗ Wikimedia → {e}")
     return pool
 
 
@@ -121,16 +129,11 @@ def build_pool() -> list:
     st.session_state.fetch_log = []
     pool = []
 
-    log("📡 Fetching from Reddit…")
-    for sub in SUBREDDITS:
-        for sort, qs in SORTS.items():
-            pool.extend(reddit_image_posts(sub, sort, qs))
+    log("📡 Fetching from CATAAS (black tag)…")
+    pool.extend(fetch_cataas())
 
-    log(f"\n🐱 Reddit: {len(pool)} images")
-
-    # Always also pull from Cat API so cloud-blocked Reddit isn't fatal
-    log("\n📡 Fetching from Cat API…")
-    pool.extend(fetch_cat_api_pool())
+    log("\n📡 Fetching from Wikimedia Commons…")
+    pool.extend(fetch_wikimedia())
 
     # Deduplicate by URL
     seen_urls: set = set()
@@ -170,7 +173,7 @@ def show_cat(cat: dict):
 
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
 if not st.session_state.pool:
-    with st.spinner("Fetching black cats from Reddit…"):
+    with st.spinner("Fetching black cats…"):
         st.session_state.pool = build_pool()
 
 if st.session_state.history_index == -1:
