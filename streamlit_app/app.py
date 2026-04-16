@@ -92,6 +92,35 @@ def reddit_image_posts(sub: str, sort: str, qs: str) -> list:
         return []
 
 
+CAT_API_BREEDS = ['bom', 'bsh', 'orie', 'mnx', 'srex', 'drex']
+
+def fetch_cat_api_pool() -> list:
+    """Always-available fallback: thecatapi.com black/dark breeds."""
+    pool = []
+    for breed in CAT_API_BREEDS:
+        try:
+            r = requests.get(
+                f'https://api.thecatapi.com/v1/images/search?limit=25&breed_ids={breed}',
+                timeout=12,
+            )
+            if r.status_code == 200:
+                items = r.json()
+                for c in items:
+                    breed_name = (c.get('breeds') or [{}])[0].get('name', 'Cat')
+                    pool.append({
+                        'url': c['url'],
+                        'title': breed_name,
+                        'author': 'The Cat API',
+                        'source': f'Cat API — {breed_name}',
+                    })
+                log(f"  ✓ Cat API breed={breed} → {len(items)} images")
+            else:
+                log(f"  ✗ Cat API breed={breed} → HTTP {r.status_code}")
+        except Exception as e:
+            log(f"  ✗ Cat API breed={breed} → {e}")
+    return pool
+
+
 def build_pool() -> list:
     st.session_state.fetch_log = []
     pool = []
@@ -101,6 +130,12 @@ def build_pool() -> list:
         for sort, qs in SORTS.items():
             pool.extend(reddit_image_posts(sub, sort, qs))
 
+    log(f"\n🐱 Reddit: {len(pool)} images")
+
+    # Always also pull from Cat API so cloud-blocked Reddit isn't fatal
+    log("\n📡 Fetching from Cat API…")
+    pool.extend(fetch_cat_api_pool())
+
     # Deduplicate by URL
     seen_urls: set = set()
     unique = []
@@ -109,28 +144,7 @@ def build_pool() -> list:
             seen_urls.add(cat['url'])
             unique.append(cat)
     pool = unique
-    log(f"\n🐱 Reddit pool (deduped): {len(pool)} images")
-
-    # Bombay fallback only when Reddit yields nothing
-    if not pool:
-        log("\n⚠️  Reddit returned 0 images — trying Bombay Cat API…")
-        try:
-            r = requests.get(
-                'https://api.thecatapi.com/v1/images/search?limit=50&breed_ids=bom',
-                timeout=12,
-            )
-            if r.status_code == 200:
-                bombay = [
-                    {'url': c['url'], 'title': 'Bombay',
-                     'author': 'The Cat API', 'source': 'Cat API — Bombay'}
-                    for c in r.json()
-                ]
-                pool.extend(bombay)
-                log(f"  ✓ Bombay Cat API → {len(bombay)} images")
-            else:
-                log(f"  ✗ Bombay Cat API → HTTP {r.status_code}")
-        except Exception as e:
-            log(f"  ✗ Bombay Cat API → {e}")
+    log(f"\n🐱 Total pool (deduped): {len(pool)} images")
 
     random.shuffle(pool)
     return pool
@@ -259,7 +273,15 @@ if st.session_state.current_cat:
 
 else:
     st.divider()
-    st.info("Click ▶️ to load your first black cat!")
+    _, col_btn, _ = st.columns([1, 2, 1])
+    with col_btn:
+        if st.button("🐱 Show me a black cat!", use_container_width=True):
+            cat = pick_cat()
+            if cat:
+                show_cat(cat)
+                st.rerun()
+            else:
+                st.error("Couldn't load any cats — try 'Refresh pool' in the sidebar.")
     if st.session_state.fetch_log:
         with st.expander("Fetch log (debug)"):
             st.code("\n".join(st.session_state.fetch_log))
