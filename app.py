@@ -6,7 +6,7 @@ st.set_page_config(
     page_title="Random Black Cats",
     page_icon="🐱",
     layout="centered",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
 # ── Session state ──────────────────────────────────────────────────────────────
@@ -19,24 +19,24 @@ defaults = {
     'seen_cats': set(),
     'cat_history': [],
     'history_index': -1,
+    'pool': [],
+    'fetch_log': [],
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# ── Styling ───────────────────────────────────────────────────────────────────
+# ── Styling ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-body { background-color: #1a1a1a; color: #f0f0f0; }
-.main { background-color: #2d2d2d; }
 h1 { color: #ffd700; text-align: center; }
 .subtitle { text-align: center; color: #b0b0b0; font-style: italic; }
 .info-box {
-    background-color: rgba(255,215,0,0.1);
+    background: rgba(255,215,0,0.08);
     border-left: 4px solid #ffd700;
-    padding: 15px;
+    padding: 12px 16px;
     border-radius: 5px;
-    margin-top: 20px;
+    margin-top: 12px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -44,147 +44,170 @@ h1 { color: #ffd700; text-align: center; }
 st.title("🐱 Random Black Cats 🐱")
 st.markdown("<p class='subtitle'>Purr-fectly Charming Felines</p>", unsafe_allow_html=True)
 
-# ── Data fetching ─────────────────────────────────────────────────────────────
+# ── Constants ──────────────────────────────────────────────────────────────────
+HEADERS = {
+    'User-Agent': (
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+        'Chrome/120.0.0.0 Safari/537.36'
+    )
+}
 
-@st.cache_data(ttl=3600)
-def fetch_reddit_cats():
-    """
-    Fetch image posts from r/blackcats (community-curated — always black cats).
-    Pulls two pages (up to 200 posts) for a large pool.
-    """
-    headers = {'User-Agent': 'Mozilla/5.0 (compatible; BlackCatApp/2.0)'}
-    posts = []
+# Subreddits that are 100% curated black cats
+SUBREDDITS = ['blackcats', 'SuperBlackCats', 'voidcats']
+SORTS = {
+    'hot':  '?limit=100',
+    'new':  '?limit=100',
+    'top':  '?t=month&limit=100',
+}
 
-    for url in [
-        'https://www.reddit.com/r/blackcats/.json?limit=100',
-        'https://www.reddit.com/r/blackcats/top/.json?limit=100&t=month',
-    ]:
-        try:
-            r = requests.get(url, headers=headers, timeout=15)
-            if r.status_code != 200:
-                continue
-            for child in r.json()['data']['children']:
-                d = child['data']
-                if d.get('stickied') or d.get('is_self'):
-                    continue
-                post_url = d.get('url', '')
-                # Only trust Reddit's own image CDN — guarantees it's an actual image
-                if 'i.redd.it' in post_url:
-                    posts.append({
-                        'url': post_url,
-                        'title': d.get('title', 'Black Cat'),
-                        'author': d.get('author', 'anonymous'),
-                        'source': 'r/blackcats',
-                    })
-        except Exception as e:
-            st.warning(f"Reddit fetch error: {e}")
-
-    return posts or None
+# ── Helpers ────────────────────────────────────────────────────────────────────
+def log(msg: str):
+    st.session_state.fetch_log.append(msg)
 
 
-@st.cache_data(ttl=3600)
-def fetch_bombay_cats():
-    """
-    Fetch Bombay breed images from The Cat API.
-    Bombay is a solid-black breed — guaranteed black cats.
-    Other breeds (BSH, Devon Rex, etc.) come in many colors and are excluded.
-    """
+def reddit_image_posts(sub: str, sort: str, qs: str) -> list:
+    url = f"https://www.reddit.com/r/{sub}/{sort}.json{qs}"
     try:
-        r = requests.get(
-            'https://api.thecatapi.com/v1/images/search?limit=50&breed_ids=bom',
-            timeout=15
-        )
-        if r.status_code == 200:
-            return [
-                {
-                    'url': cat['url'],
-                    'title': 'Bombay',
-                    'author': 'The Cat API',
-                    'source': 'Cat API — Bombay breed',
-                }
-                for cat in r.json()
-            ] or None
+        r = requests.get(url, headers=HEADERS, timeout=12)
+        if r.status_code != 200:
+            log(f"  ✗ r/{sub}/{sort} → HTTP {r.status_code}")
+            return []
+        posts = []
+        for child in r.json()['data']['children']:
+            d = child['data']
+            if d.get('stickied') or d.get('is_self'):
+                continue
+            post_url = d.get('url', '')
+            if 'i.redd.it' in post_url:
+                posts.append({
+                    'url': post_url,
+                    'title': d.get('title', 'Black Cat'),
+                    'author': d.get('author', 'anonymous'),
+                    'source': f"r/{sub}",
+                })
+        log(f"  ✓ r/{sub}/{sort} → {len(posts)} images")
+        return posts
     except Exception as e:
-        st.warning(f"Cat API fetch error: {e}")
-    return None
+        log(f"  ✗ r/{sub}/{sort} → {e}")
+        return []
 
 
-def pick_unseen(pool):
-    """Return a random cat from pool that hasn't been shown yet."""
+def build_pool() -> list:
+    st.session_state.fetch_log = []
+    pool = []
+
+    log("📡 Fetching from Reddit…")
+    for sub in SUBREDDITS:
+        for sort, qs in SORTS.items():
+            pool.extend(reddit_image_posts(sub, sort, qs))
+
+    # Deduplicate by URL
+    seen_urls: set = set()
+    unique = []
+    for cat in pool:
+        if cat['url'] not in seen_urls:
+            seen_urls.add(cat['url'])
+            unique.append(cat)
+    pool = unique
+    log(f"\n🐱 Reddit pool (deduped): {len(pool)} images")
+
+    # Bombay fallback only when Reddit yields nothing
     if not pool:
-        return None
-    unseen = [c for c in pool if c['url'] not in st.session_state.seen_cats]
-    # If we've exhausted unseen cats, reset so the app doesn't get stuck
+        log("\n⚠️  Reddit returned 0 images — trying Bombay Cat API…")
+        try:
+            r = requests.get(
+                'https://api.thecatapi.com/v1/images/search?limit=50&breed_ids=bom',
+                timeout=12,
+            )
+            if r.status_code == 200:
+                bombay = [
+                    {'url': c['url'], 'title': 'Bombay',
+                     'author': 'The Cat API', 'source': 'Cat API — Bombay'}
+                    for c in r.json()
+                ]
+                pool.extend(bombay)
+                log(f"  ✓ Bombay Cat API → {len(bombay)} images")
+            else:
+                log(f"  ✗ Bombay Cat API → HTTP {r.status_code}")
+        except Exception as e:
+            log(f"  ✗ Bombay Cat API → {e}")
+
+    random.shuffle(pool)
+    return pool
+
+
+def pick_cat():
+    unseen = [c for c in st.session_state.pool
+              if c['url'] not in st.session_state.seen_cats]
     if not unseen:
+        # Pool exhausted — rebuild silently
+        st.session_state.pool = build_pool()
         st.session_state.seen_cats.clear()
-        unseen = pool
-    return random.choice(unseen)
+        unseen = st.session_state.pool[:]
+    return random.choice(unseen) if unseen else None
 
 
-def get_random_cat():
-    """
-    Return one black cat dict, preferring Reddit (community-curated),
-    falling back to Bombay Cat API (breed-guaranteed black).
-    No HuggingFace verification — it was unreliable and silently rejecting valid cats.
-    """
-    reddit = fetch_reddit_cats()
-    if reddit:
-        cat = pick_unseen(reddit)
-        if cat:
-            return cat
-
-    bombay = fetch_bombay_cats()
-    if bombay:
-        cat = pick_unseen(bombay)
-        if cat:
-            return cat
-
-    return None
-
-
-def show_cat(cat_data):
-    """Record cat as seen, push to history, update session state."""
-    url = cat_data['url']
-    st.session_state.seen_cats.add(url)
-    st.session_state.current_cat = url
-    st.session_state.current_title = cat_data.get('title', 'Black Cat')
-    st.session_state.current_author = cat_data.get('author', 'anonymous')
-    st.session_state.current_source = cat_data.get('source', 'Unknown')
-    st.session_state.cat_counter += 1
-    st.session_state.cat_history.append(cat_data)
+def show_cat(cat: dict):
+    st.session_state.seen_cats.add(cat['url'])
+    st.session_state.current_cat    = cat['url']
+    st.session_state.current_title  = cat.get('title', 'Black Cat')
+    st.session_state.current_author = cat.get('author', '')
+    st.session_state.current_source = cat.get('source', '')
+    st.session_state.cat_counter   += 1
+    st.session_state.cat_history.append(cat)
     st.session_state.history_index = len(st.session_state.cat_history) - 1
 
 
-# ── Load first cat ─────────────────────────────────────────────────────────────
+# ── Bootstrap ──────────────────────────────────────────────────────────────────
+if not st.session_state.pool:
+    with st.spinner("Fetching black cats from Reddit…"):
+        st.session_state.pool = build_pool()
+
 if st.session_state.history_index == -1:
-    cat = get_random_cat()
+    cat = pick_cat()
     if cat:
         show_cat(cat)
 
-# ── UI ─────────────────────────────────────────────────────────────────────────
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### 📊 Stats")
+    st.metric("🐈‍⬛ Cats viewed", st.session_state.cat_counter)
+    st.metric("📚 Pool size", len(st.session_state.pool))
+    st.metric("👁️ Already seen", len(st.session_state.seen_cats))
+
+    if st.button("🔄 Refresh pool"):
+        st.session_state.pool = build_pool()
+        st.session_state.seen_cats.clear()
+        st.rerun()
+
+    if st.session_state.fetch_log:
+        st.markdown("### 🔍 Fetch log")
+        st.code("\n".join(st.session_state.fetch_log), language=None)
+
+# ── Main UI ────────────────────────────────────────────────────────────────────
 if st.session_state.current_cat:
     st.divider()
 
-    col_back, col_img, col_fwd = st.columns([1, 4, 1])
+    col_back, col_img, col_fwd = st.columns([1, 6, 1])
 
     with col_back:
-        st.write("")  # vertical spacing
+        st.write("")
         st.write("")
         if st.button("◀️", use_container_width=True,
                      disabled=(st.session_state.history_index <= 0)):
             st.session_state.history_index -= 1
             prev = st.session_state.cat_history[st.session_state.history_index]
-            st.session_state.current_cat = prev['url']
-            st.session_state.current_title = prev.get('title', 'Black Cat')
-            st.session_state.current_author = prev.get('author', 'anonymous')
-            st.session_state.current_source = prev.get('source', 'Unknown')
+            st.session_state.current_cat    = prev['url']
+            st.session_state.current_title  = prev.get('title', 'Black Cat')
+            st.session_state.current_author = prev.get('author', '')
+            st.session_state.current_source = prev.get('source', '')
             st.rerun()
 
     with col_img:
         try:
             st.image(st.session_state.current_cat, use_container_width=True)
         except Exception:
-            st.error("Could not load image — try the next one.")
+            st.error("Could not render image — click ▶️ for the next one.")
 
     with col_fwd:
         st.write("")
@@ -193,34 +216,37 @@ if st.session_state.current_cat:
             if st.session_state.history_index < len(st.session_state.cat_history) - 1:
                 st.session_state.history_index += 1
                 nxt = st.session_state.cat_history[st.session_state.history_index]
-                st.session_state.current_cat = nxt['url']
-                st.session_state.current_title = nxt.get('title', 'Black Cat')
-                st.session_state.current_author = nxt.get('author', 'anonymous')
-                st.session_state.current_source = nxt.get('source', 'Unknown')
+                st.session_state.current_cat    = nxt['url']
+                st.session_state.current_title  = nxt.get('title', 'Black Cat')
+                st.session_state.current_author = nxt.get('author', '')
+                st.session_state.current_source = nxt.get('source', '')
                 st.rerun()
             else:
-                cat = get_random_cat()
+                cat = pick_cat()
                 if cat:
                     show_cat(cat)
                     st.rerun()
                 else:
-                    st.warning("No more cats available right now. Try again in a moment.")
+                    st.warning("No cats available — click 'Refresh pool' in the sidebar.")
 
+    author_suffix = (
+        f"&nbsp;• u/{st.session_state.current_author}"
+        if st.session_state.current_source.startswith("r/") and st.session_state.current_author
+        else ""
+    )
     st.markdown(f"""
     <div class='info-box'>
     <strong>🐱 {st.session_state.current_title}</strong><br>
-    <small>{st.session_state.current_source}
-    {"• u/" + st.session_state.current_author if st.session_state.current_source == "r/blackcats" else ""}
-    </small>
+    <small>Source: {st.session_state.current_source}{author_suffix}</small>
     </div>
     """, unsafe_allow_html=True)
 
-    # Download
-    st.write("")
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
+    _, col_dl, _ = st.columns([1, 2, 1])
+    with col_dl:
         try:
-            img_bytes = requests.get(st.session_state.current_cat, timeout=10).content
+            img_bytes = requests.get(
+                st.session_state.current_cat, headers=HEADERS, timeout=10
+            ).content
             st.download_button(
                 label="⬇️ Download this cat",
                 data=img_bytes,
@@ -234,17 +260,12 @@ if st.session_state.current_cat:
 else:
     st.divider()
     st.info("Click ▶️ to load your first black cat!")
-
-# ── Footer stats ───────────────────────────────────────────────────────────────
-st.divider()
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("🐈‍⬛ Cats viewed", st.session_state.cat_counter)
-with col2:
-    st.metric("📚 In history", len(st.session_state.cat_history))
+    if st.session_state.fetch_log:
+        with st.expander("Fetch log (debug)"):
+            st.code("\n".join(st.session_state.fetch_log))
 
 st.markdown("""
-<div style='text-align:center; color:#888; font-size:0.85rem; margin-top:1rem;'>
+<div style='text-align:center;color:#888;font-size:0.85rem;margin-top:1rem;'>
 Made with ❤️ for cat lovers
 </div>
 """, unsafe_allow_html=True)
